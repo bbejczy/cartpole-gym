@@ -36,11 +36,11 @@ class ReplayBuffer:
             done_mask_lst.append([done_mask])
 
         return (
-            torch.tensor(s_lst, dtype=torch.float),
-            torch.tensor(a_lst),
-            torch.tensor(r_lst),
-            torch.tensor(s_prime_lst, dtype=torch.float),
-            torch.tensor(done_mask_lst),
+            torch.tensor(s_lst, dtype=torch.float).to(device),
+            torch.tensor(a_lst).to(device),
+            torch.tensor(r_lst).to(device),
+            torch.tensor(s_prime_lst, dtype=torch.float).to(device),
+            torch.tensor(done_mask_lst).to(device),
         )
 
     def size(self):
@@ -89,10 +89,13 @@ def train(q, q_target, memory, optimizer):
 
 def main():
 
+    global device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     env = gym.make("CartPole-v1")
 
-    q = Qnet()
-    q_tagret = Qnet()
+    q = Qnet().to(device)
+    q_tagret = Qnet().to(device)
     q_tagret.load_state_dict(q.state_dict())
 
     memory = ReplayBuffer()
