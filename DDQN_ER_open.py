@@ -18,7 +18,29 @@ gamma = 0.98
 max_episode = 20000
 buffer_limit = 10000
 batch_size = 32  # TODO: define batch size
-initial_exp = 5000  # TODO: define initial experience
+initial_exp = 2000  # TODO: define initial experience
+
+Sweep params
+
+program: DDQN_ER_open.py
+method: bayes
+metric:
+  name: score
+  goal: maximize
+parameters:
+  batch_size:
+    distribution: int_uniform
+    min: 8
+    max: 64
+  initial_exp:
+    distribution: int_uniform
+    min: 500
+    max: 2000
+  layers:
+    distribution: int_uniform
+    min: 64
+    max: 512
+
 
 """
 
@@ -55,22 +77,23 @@ class ReplayBuffer:
 
 
 class Qnet(nn.Module):
-    def __init__(self):
+    def __init__(self, args):
         super(Qnet, self).__init__()
 
         self.input_dim = 4
         self.output_dim = 2
 
         self.model = nn.Sequential(
-            nn.Linear(self.input_dim, 512),
+            nn.Linear(self.input_dim, args.layers),
             nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 2),
+            # nn.Linear(512, 256),
+            # nn.ReLU(),
+            # nn.Linear(256, 128),
+            # nn.ReLU(),
+            # nn.Linear(128, 64),
+            # nn.ReLU(),
+            # nn.Linear(64, 2),
+            nn.Linear(args.layers, self.output_dim)
         )
 
     def forward(self, x):
@@ -108,16 +131,17 @@ def main(args):
 
     global device
 
-    device = "cpu" if args.gpu == -1 else f"cuda:{args.gpu}"
-
     if args.wandb:
+        print("Wandb running!")
         wandb.init(project="cartpole-gym", monitor_gym=args.monitor_gym)
         wandb.config.update(args)
+    
+    device = "cpu" if args.gpu == -1 else f"cuda:{args.gpu}"
 
     env = gym.make("CartPole-v1")
 
-    q = Qnet().to(device)
-    q_tagret = Qnet().to(device)
+    q = Qnet(args).to(device)
+    q_tagret = Qnet(args).to(device)
     q_tagret.load_state_dict(q.state_dict())
 
     memory = ReplayBuffer(args)
@@ -170,16 +194,17 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="cartpole-gym")
     parser.add_argument(
-        "--gpu", type=int, default=0, help="gpu device num. -1 is for cpu"
+        "--gpu", type=int, default=-1, help="gpu device num. -1 is for cpu"
     )
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--initial_exp", type=int, default=500)
-    parser.add_argument("--max_episode", type=int, default=20000)
+    parser.add_argument("--max_episode", type=int, default=5000)
     parser.add_argument("--buffer_limit", type=int, default=10000)
     parser.add_argument("--gamma", type=float, default=0.98)
     parser.add_argument("--learning_rate", type=float, default=5e-4)
-    parser.add_argument("--wandb", type=bool, default=False)
+    parser.add_argument("--wandb", type=bool, default=True)
     parser.add_argument("--monitor_gym", type=bool, default=False)
+    parser.add_argument("--layers", type=int, default=128)
 
     args = parser.parse_args()
 
