@@ -138,6 +138,8 @@ def main(args):
     
     device = "cpu" if args.gpu == -1 else f"cuda:{args.gpu}"
 
+    print(f"DEVICE: {device}")
+
     env = gym.make("CartPole-v1")
 
     q = Qnet(args).to(device)
@@ -157,7 +159,7 @@ def main(args):
 
         while not done:
 
-            a = q.sample_action(torch.from_numpy(s).float(), epsilon)
+            a = q.sample_action(torch.from_numpy(s).float().to(device), epsilon)
 
             s_prime, r, done, info = env.step(a)
 
@@ -194,7 +196,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="cartpole-gym")
     parser.add_argument(
-        "--gpu", type=int, default=-1, help="gpu device num. -1 is for cpu"
+        "--gpu", type=int, default=0, help="gpu device num. -1 is for cpu"
     )
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--initial_exp", type=int, default=500)
