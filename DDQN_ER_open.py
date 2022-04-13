@@ -86,6 +86,8 @@ class Qnet(nn.Module):
         self.model = nn.Sequential(
             nn.Linear(self.input_dim, args.layers),
             nn.ReLU(),
+            nn.Linear(args.layers, args.layers),
+            nn.ReLU(),
             # nn.Linear(512, 256),
             # nn.ReLU(),
             # nn.Linear(256, 128),
@@ -132,7 +134,6 @@ def main(args):
     global device
 
     if args.wandb:
-        print("Wandb running!")
         wandb.init(project="cartpole-gym", monitor_gym=args.monitor_gym)
         wandb.config.update(args)
     
@@ -153,7 +154,7 @@ def main(args):
 
     for n_epi in range(args.max_episode):
 
-        epsilon = max(0.01, 0.1 - 0.01 * (n_epi / 200))
+        epsilon = max(0.01, 0.1 - 0.01 * (n_epi / 200)) # maybe change the minimum to 0.19
         s = env.reset()
         done = False
 
@@ -199,14 +200,14 @@ if __name__ == "__main__":
         "--gpu", type=int, default=0, help="gpu device num. -1 is for cpu"
     )
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--initial_exp", type=int, default=500)
+    parser.add_argument("--initial_exp", type=int, default=1000)
     parser.add_argument("--max_episode", type=int, default=5000)
     parser.add_argument("--buffer_limit", type=int, default=10000)
     parser.add_argument("--gamma", type=float, default=0.98)
     parser.add_argument("--learning_rate", type=float, default=5e-4)
     parser.add_argument("--wandb", type=bool, default=True)
     parser.add_argument("--monitor_gym", type=bool, default=False)
-    parser.add_argument("--layers", type=int, default=128)
+    parser.add_argument("--layers", type=int, default=256)
 
     args = parser.parse_args()
 

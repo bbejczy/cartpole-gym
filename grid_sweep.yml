@@ -1,0 +1,22 @@
+program: DDQN_ER_open.py
+method: grid
+metric:
+  name: score
+  goal: maximize
+parameters:
+  batch_size:
+    values:
+    - 16
+    - 32
+    - 64
+  initial_exp:
+    values:
+    - 500
+    - 1000
+    - 2000
+    - 5000
+  layers:
+    values:
+    - 64
+    - 128
+    - 256
