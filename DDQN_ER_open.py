@@ -1,5 +1,6 @@
 import collections
 import random
+import re
 
 import gym
 import torch
@@ -10,10 +11,11 @@ import torch.optim as optim
 # Hyperparameters
 learning_rate = 0.0005
 gamma = 0.98
-max_episode = 20000
+max_episode = 2000
 buffer_limit = 10000
-batch_size = 32  # TODO: define batch size
-initial_exp = 2000  # TODO: define initial experience
+batch_size = 64  # TODO: define batch size
+initial_exp = 5000  # TODO: define initial experience
+
 
 
 class ReplayBuffer:
@@ -36,11 +38,11 @@ class ReplayBuffer:
             done_mask_lst.append([done_mask])
 
         return (
-            torch.tensor(s_lst, dtype=torch.float).to(device),
-            torch.tensor(a_lst).to(device),
-            torch.tensor(r_lst).to(device),
-            torch.tensor(s_prime_lst, dtype=torch.float).to(device),
-            torch.tensor(done_mask_lst).to(device),
+            torch.tensor(s_lst, dtype=torch.float, device=device),
+            torch.tensor(a_lst, device=device),
+            torch.tensor(r_lst, device=device),
+            torch.tensor(s_prime_lst, dtype=torch.float, device=device),
+            torch.tensor(done_mask_lst, device=device),
         )
 
     def size(self):
@@ -90,7 +92,9 @@ def train(q, q_target, memory, optimizer):
 def main():
 
     global device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cpu')
+
 
     env = gym.make("CartPole-v1")
 
@@ -111,7 +115,7 @@ def main():
 
         while not done:
 
-            a = q.sample_action(torch.from_numpy(s).float(), epsilon)
+            a = q.sample_action(torch.from_numpy(s).float().to(device), epsilon)
 
             s_prime, r, done, info = env.step(a)
 
