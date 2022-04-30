@@ -1,6 +1,7 @@
 import argparse
 import collections
 import random
+import re
 
 import gym
 import torch
@@ -15,10 +16,11 @@ Provided Hyperparameters
 
 learning_rate = 0.0005
 gamma = 0.98
-max_episode = 20000
+max_episode = 2000
 buffer_limit = 10000
-batch_size = 32  # TODO: define batch size
-initial_exp = 2000  # TODO: define initial experience
+batch_size = 64  # TODO: define batch size
+initial_exp = 5000  # TODO: define initial experience
+
 
 Sweep params
 
@@ -65,11 +67,11 @@ class ReplayBuffer:
             done_mask_lst.append([done_mask])
 
         return (
-            torch.tensor(s_lst, dtype=torch.float).to(device),
-            torch.tensor(a_lst).to(device),
-            torch.tensor(r_lst).to(device),
-            torch.tensor(s_prime_lst, dtype=torch.float).to(device),
-            torch.tensor(done_mask_lst).to(device),
+            torch.tensor(s_lst, dtype=torch.float, device=device),
+            torch.tensor(a_lst, device=device),
+            torch.tensor(r_lst, device=device),
+            torch.tensor(s_prime_lst, dtype=torch.float, device=device),
+            torch.tensor(done_mask_lst, device=device),
         )
 
     def size(self):
@@ -127,11 +129,12 @@ def main(args):
     global device
 
     if args.wandb:
-        # print("Wandb running!")
         wandb.init(project="cartpole-gym", monitor_gym=args.monitor_gym)
         wandb.config.update(args)
     
     device = "cpu" if args.gpu == -1 else f"cuda:{args.gpu}"
+
+    print(f"DEVICE: {device}")
 
     env = gym.make("CartPole-v1")
 
@@ -152,7 +155,7 @@ def main(args):
 
         while not done:
 
-            a = q.sample_action(torch.from_numpy(s).float(), epsilon)
+            a = q.sample_action(torch.from_numpy(s).float().to(device), epsilon)
 
             s_prime, r, done, info = env.step(a)
 
@@ -189,7 +192,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="cartpole-gym")
     parser.add_argument(
-        "--gpu", type=int, default=-1, help="gpu device num. -1 is for cpu"
+        "--gpu", type=int, default=0, help="gpu device num. -1 is for cpu"
     )
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--initial_exp", type=int, default=1000)
