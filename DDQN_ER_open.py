@@ -88,13 +88,6 @@ class Qnet(nn.Module):
             nn.ReLU(),
             nn.Linear(args.layers, args.layers),
             nn.ReLU(),
-            # nn.Linear(512, 256),
-            # nn.ReLU(),
-            # nn.Linear(256, 128),
-            # nn.ReLU(),
-            # nn.Linear(128, 64),
-            # nn.ReLU(),
-            # nn.Linear(64, 2),
             nn.Linear(args.layers, self.output_dim)
         )
 
