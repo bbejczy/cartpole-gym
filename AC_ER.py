@@ -5,6 +5,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
 
+import argparse
+import wandb
+
 learning_rate = 0.0002
 gamma = 0.98
 n_rollout = 10
@@ -47,11 +50,11 @@ class ActorCritic(nn.Module):
             done_lst.append([done_mask])
 
         s_batch, a_batch, r_batch, s_prime_batch, done_batch, = (
-            torch.tensor(s_lst, dtype=torch.float),
-            torch.tensor(a_lst),
-            torch.tensor(r_lst, dtype=torch.float),
-            torch.tensor(s_prime_lst, dtype=torch.float),
-            torch.tensor(done_lst, dtype=torch.float),
+            torch.tensor(s_lst, dtype=torch.float).to(device),
+            torch.tensor(a_lst).to(device),
+            torch.tensor(r_lst, dtype=torch.float).to(device),
+            torch.tensor(s_prime_lst, dtype=torch.float).to(device),
+            torch.tensor(done_lst, dtype=torch.float).to(device),
         )
         self.data = []
         return s_batch, a_batch, r_batch, s_prime_batch, done_batch
@@ -71,9 +74,19 @@ class ActorCritic(nn.Module):
         self.optimizer.step()
 
 
-def main():
+def main(args):
+
+    global device
+
+    if args.wandb:
+        # print("Wandb running!")
+        wandb.init(project="cartpole-gym")
+        # wandb.config.update(args)
+
+    device = "cpu" if args.gpu == -1 else f"cuda:{args.gpu}"
+
     env = gym.make("CartPole-v1")
-    model = ActorCritic()
+    model = ActorCritic().to(device)
     print_interval = 20
     score = 0.0
     max_episode = 10000
@@ -117,6 +130,12 @@ def main():
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(description="cartpole-gym")
+    parser.add_argument(
+        "--gpu", type=int, default=0, help="gpu device num. -1 is for cpu"
+    )
+    parser.add_argument("--wandb", type=bool, default=False)
 
+    args = parser.parse_args()
 
-    main()
+    main(args)
