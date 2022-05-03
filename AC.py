@@ -17,7 +17,6 @@ class ActorCritic(nn.Module):
     def __init__(self) -> None:
         super(ActorCritic, self).__init__()
         self.data = []
-        
 
         self.fc1 = nn.Linear(4, 256)
         self.fc_pi = nn.Linear(256, 2)

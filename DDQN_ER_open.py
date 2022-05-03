@@ -128,7 +128,8 @@ def main(args):
 
     global device
 
-    if args.wandb:
+    if(args.wandb):
+        print("starting wandb")
         wandb.init(project="cartpole-gym", monitor_gym=args.monitor_gym)
         wandb.config.update(args)
     
@@ -200,7 +201,7 @@ if __name__ == "__main__":
     parser.add_argument("--buffer_limit", type=int, default=10000)
     parser.add_argument("--gamma", type=float, default=0.98)
     parser.add_argument("--learning_rate", type=float, default=5e-4)
-    parser.add_argument("--wandb", type=bool, default=True)
+    parser.add_argument("--wandb", type=bool, default=False)
     parser.add_argument("--monitor_gym", type=bool, default=False)
     parser.add_argument("--layers", type=int, default=256)
 
