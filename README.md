@@ -5,7 +5,7 @@ Repository for homeworks of class PD803.
 ## List of algorithms:
 - Actor Critic without Experience Replay: `AC.py`
 - Actor Critic with Experience Replay: `AC_ER.py`
-- Dualing Deep Q Network: `DDQN_ER.py`
+- Dualing Deep Q Network with Experience Replay: `DDQN_ER.py`
 
 ## Logging and sweeps
 
