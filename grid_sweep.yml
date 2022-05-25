@@ -1,4 +1,4 @@
-program: DDQN_ER_open.py
+program: DDQN_ER.py
 method: grid
 metric:
   name: score

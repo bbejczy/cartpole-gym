@@ -64,30 +64,6 @@ class ActorCritic(nn.Module):
         v = self.fc_v(x)
         return v
 
-    # def put_data(self, transition):
-    #     self.data.append(transition) #TODO: change this to experience replay
-
-    # def make_batch(self):
-    #     s_lst, a_lst, r_lst, s_prime_lst, done_lst = [], [], [], [], []
-    #     for transition in self.data:
-    #         s, a, r, s_prime, done = transition
-    #         s_lst.append(s)
-    #         a_lst.append([a])
-    #         r_lst.append([r / 100.0])
-    #         s_prime_lst.append(s_prime)
-    #         done_mask = 0.0 if done else 1.0
-    #         done_lst.append([done_mask])
-
-    #     s_batch, a_batch, r_batch, s_prime_batch, done_batch, = (
-    #         torch.tensor(s_lst, dtype=torch.float).to(device),
-    #         torch.tensor(a_lst).to(device),
-    #         torch.tensor(r_lst, dtype=torch.float).to(device),
-    #         torch.tensor(s_prime_lst, dtype=torch.float).to(device),
-    #         torch.tensor(done_lst, dtype=torch.float).to(device),
-    #     )
-    #     self.data = []
-    #     return s_batch, a_batch, r_batch, s_prime_batch, done_batch
-
 def train_net(model, memory, optimizer, args):
     s, a, r, s_prime, done = memory.sample()
     td_target = r + gamma * model.v(s_prime) * done
