@@ -152,21 +152,21 @@ def train(global_model, rank): # Called by 3(n_train_processes) agents independe
 
 
 def test(global_model):
+
+    if logging:
+        wandb.init(project="A3C", config={
+            "n_train_processes": 3,
+            "learning_rate": 0.0002,
+            "update_interval": 5,      
+            "gamma": 0.98,
+            "max_train_ep": 300,
+            "max_test_ep": 400,
+            "run_version": 'Hopper_A3C'
+        })
+
     env = gym.make('Hopper-v3') # Create 'CartPole-v1' environment. 
     score = 0.0           
     print_interval = 20   
-
-    if logging:
-        wandb.init(project="A3C")
-        wandb.config.update({
-            n_train_processes: 3,
-            learning_rate: 0.0002,
-            update_interval: 5,      
-            gamma: 0.98,
-            max_train_ep: 300,
-            max_test_ep: 400,
-            type: "Hopper-v3-A3C"
-        })
 
     render = False # for rendering
 
@@ -259,22 +259,19 @@ def print_reward(rwds, stds, eval_interval, label_name, color): #for plot
 
 if __name__ == '__main__':
 
-    for i in range(10): 
-        print(f"Starting run {i} #########################")
-        global_model = ActorCritic()
-        global_model.share_memory() #Move 'global_model' to shared memory to share data between multiple processes.
+    global_model = ActorCritic()
+    global_model.share_memory() #Move 'global_model' to shared memory to share data between multiple processes.
 
-        processes = []
-        # Create 3(n_train_processes) processes for training and 1 process for testing.
-        for rank in range(n_train_processes + 1):  # + 1 for test process
-            if rank == 0:
-                p = mp.Process(target=test, args=(global_model,))        # Create a test processor.
-            else:
-                p = mp.Process(target=train, args=(global_model, rank,)) # Create training processor.
+    processes = []
+    # Create 3(n_train_processes) processes for training and 1 process for testing.
+    for rank in range(n_train_processes + 1):  # + 1 for test process
+        if rank == 0:
+            p = mp.Process(target=test, args=(global_model,))        # Create a test processor.
+        else:
+            p = mp.Process(target=train, args=(global_model, rank,)) # Create training processor.
 
-            p.start() #Process Start
-            processes.append(p)
+        p.start() #Process Start
+        processes.append(p)
 
-        for p in processes: 
-            p.join()  # Wait for all processes to terminate.
-        print(f"Ending run {i} #########################")
+    for p in processes: 
+        p.join()  # Wait for all processes to terminate.
