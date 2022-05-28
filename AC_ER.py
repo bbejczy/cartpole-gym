@@ -1,27 +1,29 @@
+import argparse
+import collections
+import random
+
 import gym
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
-import collections 
-import random
 
-import argparse
 import wandb
 
 learning_rate = 0.0002
 gamma = 0.98
 n_rollout = 10
 
+
 class ReplayBuffer:
     def __init__(self, args) -> None:
         self.buffer = collections.deque(maxlen=args.buffer_limit)
 
-    def put(self, transition): #TODO: use instead of put data
+    def put(self, transition):  # TODO: use instead of put data
         self.buffer.append(transition)
 
-    def sample(self, n): #TODO: use instead of make batch
+    def sample(self, n):  # TODO: use instead of make batch
         mini_batch = random.sample(self.buffer, n)
         s_lst, a_lst, r_lst, s_prime_lst, done_mask_lst = [], [], [], [], []
 
@@ -44,6 +46,7 @@ class ReplayBuffer:
     def size(self):
         return len(self.buffer)
 
+
 class ActorCritic(nn.Module):
     def __init__(self) -> None:
         super(ActorCritic, self).__init__()
@@ -63,6 +66,7 @@ class ActorCritic(nn.Module):
         x = F.relu(self.fc1(x))
         v = self.fc_v(x)
         return v
+
 
 def train_net(model, memory, optimizer, args):
     s, a, r, s_prime, done = memory.sample()
@@ -129,12 +133,7 @@ def main(args):
                     n_epi, score / print_interval
                 )
             )
-            wandb.log(
-                {
-                    "n_episode": n_epi,
-                    "score": score / print_interval
-                }
-            )
+            wandb.log({"n_episode": n_epi, "score": score / print_interval})
             if abs(score / print_interval) > 350:
                 render = True
             score = 0.0

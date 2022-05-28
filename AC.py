@@ -1,3 +1,5 @@
+import argparse
+
 import gym
 import torch
 import torch.nn as nn
@@ -5,7 +7,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
 
-import argparse
 import wandb
 
 learning_rate = 0.0002
@@ -35,7 +36,7 @@ class ActorCritic(nn.Module):
         return v
 
     def put_data(self, transition):
-        self.data.append(transition) #TODO: change this to experience replay
+        self.data.append(transition)  # TODO: change this to experience replay
 
     def make_batch(self):
         s_lst, a_lst, r_lst, s_prime_lst, done_lst = [], [], [], [], []
@@ -121,12 +122,7 @@ def main(args):
                     n_epi, score / print_interval
                 )
             )
-            wandb.log(
-                {
-                    "n_episode": n_epi,
-                    "score": score / print_interval
-                }
-            )
+            wandb.log({"n_episode": n_epi, "score": score / print_interval})
             if abs(score / print_interval) > 350:
                 render = True
             score = 0.0

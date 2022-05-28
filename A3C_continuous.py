@@ -1,5 +1,3 @@
-import collections
-import random
 import time
 import warnings
 
@@ -19,57 +17,15 @@ from matplotlib import pyplot as plt  # ##for plot
 import wandb
 
 # Hyperparameters
-n_train_processes = 3
+n_train_processes = 3  # number of independent agents. (for training)
 learning_rate = 0.0002
 update_interval = 5
 gamma = 0.98
-max_train_ep = 300
-max_test_ep = 400
+max_train_ep = 300  # max episode for training.
+max_test_ep = 400  # max episode for test.
 logging = False
-buffer_limit = 100
-initial_exp = 30
-
 
 torch.autograd.set_detect_anomaly(True)
-
-
-class ReplayBuffer:
-    def __init__(self) -> None:
-        self.buffer = collections.deque(maxlen=buffer_limit)
-        # self.buffer = []
-
-    def put(self, transition):
-        self.buffer.append(transition)
-
-    def make_batch(self, n):
-        mini_batch = random.sample(self.buffer, n)
-        s_lst, a_lst, r_lst, p_lst, s_prime_lst, done_lst = [], [], [], [], [], []
-
-        for transition in mini_batch:
-            s, a, r, log_prob, s_prime, done = transition
-
-            s_lst.append(s)
-            a_lst.append([a])
-            p_lst.append(log_prob)
-            r_lst.append(r / 100.0)
-            s_prime_lst.append(s_prime)
-            done_mask = 0.0 if done else 1.0
-            done_lst.append([done_mask])
-
-        s_batch, a_batch, r_batch, p_batch, s_prime_batch, done_batch = (
-            torch.tensor(s_lst, dtype=torch.float),
-            torch.tensor(a_lst),
-            torch.tensor(r_lst, dtype=torch.float),
-            torch.stack(p_lst),
-            torch.tensor(s_prime_lst, dtype=torch.float),
-            torch.tensor(done_lst, dtype=torch.float),
-        )
-
-        return s_batch, a_batch, r_batch, p_batch, s_prime_batch, done_batch
-
-    def size(self):
-        return len(self.buffer)
-
 
 # This class is equivalent to Actor-Critic. (pi, v)
 class ActorCritic(
@@ -140,7 +96,6 @@ class ActorCritic(
 
 def train(global_model, rank):  # Called by 3(n_train_processes) agents independently.
     count = 0
-    memory = ReplayBuffer()
     local_model = (
         ActorCritic()
     )  # Call the ActorCritic.__init__() --> Creating an local_model Object
@@ -175,85 +130,87 @@ def train(global_model, rank):  # Called by 3(n_train_processes) agents independ
 
                 s_prime, r, done, info = env.step(a)
 
-                memory.put((s, a, r, log_prob, s_prime, done))
-
-                # count += a.shape[0]
+                local_model.put((s, a, r, log_prob, s_prime, done))
 
                 s = s_prime
                 if done:
                     break
 
-            if memory.size() > initial_exp:
+            (
+                s_batch,
+                a_batch,
+                r_batch,
+                p_batch,
+                s_prime_batch,
+                done_batch,
+            ) = local_model.make_batch()
 
-                (
-                    s_batch,
-                    a_batch,
-                    r_batch,
-                    p_batch,
-                    s_prime_batch,
-                    done_batch,
-                ) = memory.make_batch(20)
+            r_lst = list(r_batch.detach().numpy())
 
-                r_lst = list(r_batch.detach().numpy())
+            s_final = torch.tensor(
+                s_prime, dtype=torch.float
+            )  # numpy array to tensor - s_final[4]
+            R = (
+                0.0 if done else local_model.v(s_final).item()
+            )  # .item() is to change tensor to python float type.
+            td_target_lst = []
+            for reward in r_lst[
+                ::-1
+            ]:  # r_lst[start,end,step(-1)] ==> 5(update_interval):0:-1
+                R = gamma * R + reward
+                td_target_lst.append([R])
+            td_target_lst.reverse()
 
-                s_final = torch.tensor(
-                    s_prime, dtype=torch.float
-                )  # numpy array to tensor - s_final[4]
-                R = (
-                    0.0 if done else local_model.v(s_final).item()
-                )  # .item() is to change tensor to python float type.
-                td_target_lst = []
-                for reward in r_lst[
-                    ::-1
-                ]:  # r_lst[start,end,step(-1)] ==> 5(update_interval):0:-1
-                    R = gamma * R + reward
-                    td_target_lst.append([R])
-                td_target_lst.reverse()
+            td_target_batch = torch.tensor(td_target_lst)
 
-                td_target_batch = torch.tensor(td_target_lst)
+            advantage = td_target_batch - local_model.v(s_batch)
 
-                advantage = td_target_batch - local_model.v(s_batch)
+            loss = torch.sum(
+                -p_batch * advantage.detach().reshape(-1).float()
+            ) + F.mse_loss(
+                local_model.v(s_batch), td_target_batch.detach().float()
+            )  # This is equivalent to Actor-Critic.
 
-                loss = torch.sum(
-                    -p_batch * advantage.detach().reshape(-1).float()
-                ) + F.mse_loss(
-                    local_model.v(s_batch), td_target_batch.detach().float()
-                )  # This is equivalent to Actor-Critic.
+            optimizer.zero_grad()  # In PyTorch, since the differential value is accumulated, the gradient must be initialized.
+            loss.mean().backward()  # Backpropagation - gradient calculation
 
-                optimizer.zero_grad()
-                loss.mean().backward(
-                    retain_graph=True
-                )  # Backpropagation - gradient calculation
+            for global_param, local_param in zip(
+                global_model.parameters(), local_model.parameters()
+            ):
+                global_param.grad = (
+                    local_param.grad
+                )  # local_param.grad -> A variable that stored the calculated gradient values.
 
-                for global_param, local_param in zip(
-                    global_model.parameters(), local_model.parameters()
-                ):
-                    global_param.grad = (
-                        local_param.grad
-                    )  # local_param.grad -> A variable that stored the calculated gradient values.
-
-                optimizer.step()  # weights & biases update
-                for name, param in local_model.named_parameters():
-                    param.data = global_model.state_dict()[name]
-                    """
-                    alterntive to get over the following error:
-                    RuntimeError: one of the variables needed for gradient
-                    computation has been modified by an inplace operation
-                    """
+            optimizer.step()  # weights & biases update
+            local_model.load_state_dict(
+                global_model.state_dict()
+            )  # Copy the global_model network weights & biases to local_model # local_model=global_model
+            # for name, param in local_model.named_parameters():
+            #     param.data = global_model.state_dict()[name]
 
     env.close()
-    if logging:
-        wandb.finish()
     print("Training process {} reached maximum episode.".format(rank))
 
 
 def test(global_model):
+
+    if logging:
+        wandb.init(
+            project="A3C",
+            config={
+                "n_train_processes": 3,
+                "learning_rate": 0.0002,
+                "update_interval": 5,
+                "gamma": 0.98,
+                "max_train_ep": 300,
+                "max_test_ep": 400,
+                "run_version": "Hopper_A3C",
+            },
+        )
+
     env = gym.make("Hopper-v3")  # Create 'CartPole-v1' environment.
     score = 0.0
     print_interval = 20
-
-    if logging:
-        wandb.init(project="A3C")
 
     render = False  # for rendering
 
@@ -303,10 +260,10 @@ def test(global_model):
             time.sleep(1)  # 1 second.
 
     env.close()
+    if logging:
+        wandb.finish()
 
-    print_reward(
-        reward_means, reward_stds, print_interval, "A3C", "g"
-    )  # label name, color='r','g','b','c','m','y','k','w'
+    # print_reward(reward_means, reward_stds, print_interval, 'A3C', 'g') #label name, color='r','g','b','c','m','y','k','w'
 
 
 def print_reward(rwds, stds, eval_interval, label_name, color):  # for plot
@@ -346,14 +303,12 @@ def print_reward(rwds, stds, eval_interval, label_name, color):  # for plot
     ax.spines["left"].set_visible(False)
 
     # plt.savefig("plot.png")
-    plt.plot()
 
 
 if __name__ == "__main__":
+
     global_model = ActorCritic()
     global_model.share_memory()  # Move 'global_model' to shared memory to share data between multiple processes.
-
-    memory = ReplayBuffer()
 
     processes = []
     # Create 3(n_train_processes) processes for training and 1 process for testing.

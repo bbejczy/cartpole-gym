@@ -90,7 +90,7 @@ class Qnet(nn.Module):
             nn.ReLU(),
             nn.Linear(args.layers, args.layers),
             nn.ReLU(),
-            nn.Linear(args.layers, self.output_dim)
+            nn.Linear(args.layers, self.output_dim),
         )
 
     def forward(self, x):
@@ -128,11 +128,11 @@ def main(args):
 
     global device
 
-    if(args.wandb):
+    if args.wandb:
         print("starting wandb")
         wandb.init(project="cartpole-gym", monitor_gym=args.monitor_gym)
         wandb.config.update(args)
-    
+
     device = "cpu" if args.gpu == -1 else f"cuda:{args.gpu}"
 
     print(f"DEVICE: {device}")
@@ -150,7 +150,9 @@ def main(args):
 
     for n_epi in range(args.max_episode):
 
-        epsilon = max(0.01, 0.1 - 0.01 * (n_epi / 200)) # maybe change the minimum to 0.19
+        epsilon = max(
+            0.01, 0.1 - 0.01 * (n_epi / 200)
+        )  # maybe change the minimum to 0.19
         s = env.reset()
         done = False
 

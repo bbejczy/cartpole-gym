@@ -2,5 +2,5 @@
 
 count=10
 for i in $(seq $count); do
-    python3 A3C_raw_ndf.py
+    python3 A3C_continuous.py
 done
