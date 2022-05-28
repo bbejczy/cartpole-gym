@@ -242,8 +242,7 @@ def train(global_model, rank):  # Called by 3(n_train_processes) agents independ
                     """
 
     env.close()
-    if logging:
-        wandb.finish()
+
     print("Training process {} reached maximum episode.".format(rank))
 
 
@@ -303,6 +302,8 @@ def test(global_model):
             time.sleep(1)  # 1 second.
 
     env.close()
+    if logging:
+        wandb.finish()
 
     print_reward(
         reward_means, reward_stds, print_interval, "A3C", "g"
