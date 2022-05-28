@@ -145,7 +145,8 @@ def train(global_model, rank): # Called by 3(n_train_processes) agents independe
 
             optimizer.step() # weights & biases update
             local_model.load_state_dict(global_model.state_dict()) # Copy the global_model network weights & biases to local_model # local_model=global_model
-
+            # for name, param in local_model.named_parameters():
+            #     param.data = global_model.state_dict()[name]
 
     env.close()
     print("Training process {} reached maximum episode.".format(rank))
@@ -255,7 +256,7 @@ def print_reward(rwds, stds, eval_interval, label_name, color): #for plot
     ax.spines['bottom'].set_visible(False)
     ax.spines['left'].set_visible(False)
     
-    plt.savefig("plot.png")
+    # plt.savefig("plot.png")
 
 if __name__ == '__main__':
 

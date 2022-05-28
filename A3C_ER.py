@@ -1,3 +1,4 @@
+from threading import local
 import gym                          # openai gym library
 import torch
 import torch.nn as nn               # Linear
@@ -6,6 +7,8 @@ import torch.optim as optim         # Adam Optimizer
 from torch.distributions import Categorical, Normal # Categorical import from torch.distributions module
 import torch.multiprocessing as mp # multi processing
 import time 
+import collections 
+import random
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -23,6 +26,41 @@ gamma = 0.98
 max_train_ep = 300  # max episode for training.
 max_test_ep  = 400  # max episode for test.
 logging = False
+buffer_limit = 100
+initial_exp = 30
+
+
+torch.autograd.set_detect_anomaly(True)
+
+class ReplayBuffer:
+    def __init__(self) -> None:
+        self.buffer = collections.deque(maxlen=buffer_limit)
+        # self.buffer = []
+
+    def put(self, transition): #TODO: use instead of put data
+        self.buffer.append(transition)
+
+    def make_batch(self, n): #TODO: use instead of make batch
+        mini_batch = random.sample(self.buffer, n)
+        s_lst, a_lst, r_lst, p_lst, s_prime_lst, done_lst = [], [], [], [], [], []
+
+        for transition in mini_batch:
+            s, a, r, log_prob, s_prime, done = transition
+
+            s_lst.append(s)
+            a_lst.append([a])
+            p_lst.append(log_prob)
+            r_lst.append(r/100.0)
+            s_prime_lst.append(s_prime)
+            done_mask = 0.0 if done else 1.0
+            done_lst.append([done_mask])
+        
+        s_batch, a_batch, r_batch, p_batch, s_prime_batch, done_batch = torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst), torch.tensor(r_lst, dtype=torch.float), torch.stack(p_lst), torch.tensor(s_prime_lst, dtype=torch.float), torch.tensor(done_lst, dtype=torch.float)
+
+        return s_batch, a_batch, r_batch, p_batch, s_prime_batch, done_batch
+   
+    def size(self):
+        return len(self.buffer)
 
 #This class is equivalent to Actor-Critic. (pi, v)
 class ActorCritic(nn.Module):  # ActorCritic Class - Created by inheriting nn.Module (provided by Pytorch) Class. 
@@ -32,6 +70,8 @@ class ActorCritic(nn.Module):  # ActorCritic Class - Created by inheriting nn.Mo
         self.fc_pi = nn.Linear(256, 3)  # Fully Connected: input 256 --> output   2
         self.fc_v  = nn.Linear(256, 1)  # Fully Connected: input 256 --> output   1
         self.std = nn.Linear(256, 3)
+
+        self.data = []
 
     def pi(self, x, softmax_dim=0):  # In the case of batch processing, softmax_dim becomes 1. (default 0)
         x = F.relu(self.fc1(x))
@@ -50,8 +90,35 @@ class ActorCritic(nn.Module):  # ActorCritic Class - Created by inheriting nn.Mo
         x = F.relu(self.fc1(x))
         v = self.fc_v(x)
         return v
+    
+    def put(self, transition):
+        self.data.append(transition)
+
+
+    def make_batch (self):
+        s_lst, a_lst, r_lst, p_lst, s_prime_lst, done_lst = [], [], [], [], [], []
+
+        for transition in self.data:
+            s, a, r, log_prob, s_prime, done = transition
+
+            s_lst.append(s)
+            a_lst.append([a])
+            p_lst.append(log_prob)
+            r_lst.append(r/100.0)
+            s_prime_lst.append(s_prime)
+            done_mask = 0.0 if done else 1.0
+            done_lst.append([done_mask])
+
+            s_batch, a_batch, r_batch, p_batch, s_prime_batch, done_batch = torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst), torch.tensor(r_lst, dtype=torch.float), torch.stack(p_lst), torch.tensor(s_prime_lst, dtype=torch.float), torch.tensor(done_lst, dtype=torch.float)
+
+        self.data = []
+        return s_batch, a_batch, r_batch, p_batch, s_prime_batch, done_batch
+        
+
 
 def train(global_model, rank): # Called by 3(n_train_processes) agents independently.  
+    count = 0
+    memory = ReplayBuffer()
     local_model = ActorCritic()                            # Call the ActorCritic.__init__() --> Creating an local_model Object 
     local_model.load_state_dict(global_model.state_dict()) # Copy the global_model network weights & biases to local_model # local_model=global_model
 
@@ -69,7 +136,6 @@ def train(global_model, rank): # Called by 3(n_train_processes) agents independe
 
             for t in range(update_interval):   # Collect data during 5(update_interval) steps and proceed with training.  
                 dist = local_model.pi(torch.from_numpy(s).float())
-
                 a = dist.sample()
                 log_prob = dist.log_prob(a).sum()
                 a = F.tanh(a) # [-1,1]
@@ -77,36 +143,59 @@ def train(global_model, rank): # Called by 3(n_train_processes) agents independe
 
                 s_prime, r, done, info = env.step(a)
 
-                s_lst.append(s)
-                a_lst.append([a])
-                p_lst.append(log_prob)
-                r_lst.append(r/100.0)
+                memory.put((s, a, r, log_prob, s_prime, done))
+
+                # count += a.shape[0]
 
                 s = s_prime
                 if done:
                     break
+            # print(count)
+            # print(memory.size())
 
-            s_final = torch.tensor(s_prime, dtype=torch.float) # numpy array to tensor - s_final[4]
-            R = 0.0 if done else local_model.v(s_final).item() # .item() is to change tensor to python float type.
-            td_target_lst = []
-            for reward in r_lst[::-1]:  # r_lst[start,end,step(-1)] ==> 5(update_interval):0:-1
-                R = gamma * R + reward
-                td_target_lst.append([R])
-            td_target_lst.reverse()
+            # if count > initial_exp:
+            if memory.size() > initial_exp:
 
-            s_batch, a_batch, td_target_batch, p_batch = torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst), torch.tensor(td_target_lst), torch.stack(p_lst)
-            advantage = td_target_batch - local_model.v(s_batch)
+                # print("train")
+                
+                s_batch, a_batch, r_batch, p_batch, s_prime_batch, done_batch = memory.make_batch(20)
 
-            loss = torch.sum(-p_batch * advantage.detach().reshape(-1).float()) + F.mse_loss(local_model.v(s_batch), td_target_batch.detach().float()) # This is equivalent to Actor-Critic.
 
-            optimizer.zero_grad()  # In PyTorch, since the differential value is accumulated, the gradient must be initialized.
-            loss.mean().backward() # Backpropagation - gradient calculation
+                # print(s_batch.shape, p_batch.shape)
 
-            for global_param, local_param in zip(global_model.parameters(), local_model.parameters()):
-                global_param.grad = local_param.grad  #local_param.grad -> A variable that stored the calculated gradient values.
+                r_lst = list(r_batch.detach().numpy())
 
-            optimizer.step() # weights & biases update
-            local_model.load_state_dict(global_model.state_dict()) # Copy the global_model network weights & biases to local_model # local_model=global_model
+                s_final = torch.tensor(s_prime, dtype=torch.float) # numpy array to tensor - s_final[4]
+                R = 0.0 if done else local_model.v(s_final).item() # .item() is to change tensor to python float type.
+                td_target_lst = []
+                for reward in r_lst[::-1]:  # r_lst[start,end,step(-1)] ==> 5(update_interval):0:-1
+                    R = gamma * R + reward
+                    td_target_lst.append([R])
+                td_target_lst.reverse()
+
+                td_target_batch = torch.tensor(td_target_lst)
+
+                # s_batch, a_batch, td_target_batch, p_batch = torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst), torch.tensor(td_target_lst), torch.stack(p_lst)
+
+                advantage = td_target_batch - local_model.v(s_batch)
+
+                loss = torch.sum(-p_batch * advantage.detach().reshape(-1).float()) + F.mse_loss(local_model.v(s_batch), td_target_batch.detach().float()) # This is equivalent to Actor-Critic.
+
+                optimizer.zero_grad()  # In PyTorch, since the differential value is accumulated, the gradient must be initialized.
+                loss.mean().backward(retain_graph=True) # Backpropagation - gradient calculation
+
+                for global_param, local_param in zip(global_model.parameters(), local_model.parameters()):
+                    global_param.grad = local_param.grad  #local_param.grad -> A variable that stored the calculated gradient values.
+
+                optimizer.step() # weights & biases update
+                # print(global_model.state_dict())
+                # local_model.state_dict()['weight'] = global_model.state_dict()['weight']
+                # local_model.state_dict()['bias'] = global_model.state_dict()['bias']
+                # with torch.no_grad():
+                # local_model.load_state_dict(global_model.state_dict()) # Copy the global_model network weights & biases to local_model # local_model=global_model
+                for name, param in local_model.named_parameters():
+                    param.data = global_model.state_dict()[name]
+                # print("end of train step")
 
     env.close()
     print("Training process {} reached maximum episode.".format(rank))
@@ -207,11 +296,14 @@ def print_reward(rwds, stds, eval_interval, label_name, color): #for plot
     ax.spines['bottom'].set_visible(False)
     ax.spines['left'].set_visible(False)
     
-    plt.savefig("plot.png")
+    # plt.savefig("plot.png")
+    plt.plot()
 
 if __name__ == '__main__':
     global_model = ActorCritic()
     global_model.share_memory() #Move 'global_model' to shared memory to share data between multiple processes.
+
+    memory = ReplayBuffer()
 
     processes = []
     # Create 3(n_train_processes) processes for training and 1 process for testing.
