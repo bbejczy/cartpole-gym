@@ -33,8 +33,6 @@ class ActorCritic(nn.Module):  # ActorCritic Class - Created by inheriting nn.Mo
         self.fc_v  = nn.Linear(256, 1)  # Fully Connected: input 256 --> output   1
         self.std = nn.Linear(256, 3)
 
-        self.data = []
-
     def pi(self, x, softmax_dim=0):  # In the case of batch processing, softmax_dim becomes 1. (default 0)
         x = F.relu(self.fc1(x))
 
@@ -52,31 +50,6 @@ class ActorCritic(nn.Module):  # ActorCritic Class - Created by inheriting nn.Mo
         x = F.relu(self.fc1(x))
         v = self.fc_v(x)
         return v
-    
-    def put_data(self, transition):
-        self.data.append(transition)
-
-
-    def make_batch (self):
-        s_lst, a_lst, r_lst, p_lst, s_prime_lst, done_lst = [], [], [], [], [], []
-
-        for transition in self.data:
-            s, a, r, log_prob, s_prime, done = transition
-
-            s_lst.append(s)
-            a_lst.append([a])
-            p_lst.append(log_prob)
-            r_lst.append(r/100.0)
-            s_prime_lst.append(s_prime)
-            done_mask = 0.0 if done else 1.0
-            done_lst.append([done_mask])
-
-            s_batch, a_batch, r_batch, p_batch, s_prime_batch, done_batch = torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst), torch.tensor(r_lst, dtype=torch.float), torch.stack(p_lst), torch.tensor(s_prime_lst, dtype=torch.float), torch.tensor(done_lst, dtype=torch.float)
-
-        self.data = []
-        return s_batch, a_batch, r_batch, p_batch, s_prime_batch, done_batch
-        
-
 
 def train(global_model, rank): # Called by 3(n_train_processes) agents independently.  
     local_model = ActorCritic()                            # Call the ActorCritic.__init__() --> Creating an local_model Object 
@@ -96,6 +69,7 @@ def train(global_model, rank): # Called by 3(n_train_processes) agents independe
 
             for t in range(update_interval):   # Collect data during 5(update_interval) steps and proceed with training.  
                 dist = local_model.pi(torch.from_numpy(s).float())
+
                 a = dist.sample()
                 log_prob = dist.log_prob(a).sum()
                 a = F.tanh(a) # [-1,1]
@@ -103,20 +77,14 @@ def train(global_model, rank): # Called by 3(n_train_processes) agents independe
 
                 s_prime, r, done, info = env.step(a)
 
-                local_model.put_data((s, a, r, log_prob, s_prime, done))
-
-                # s_lst.append(s)
-                # a_lst.append([a])
-                # p_lst.append(log_prob)
-                # r_lst.append(r/100.0)
+                s_lst.append(s)
+                a_lst.append([a])
+                p_lst.append(log_prob)
+                r_lst.append(r/100.0)
 
                 s = s_prime
                 if done:
                     break
-            
-            s_batch, a_batch, r_batch, p_batch, s_prime_batch, done_batch = local_model.make_batch()
-
-            r_lst = list(r_batch.detach().numpy())
 
             s_final = torch.tensor(s_prime, dtype=torch.float) # numpy array to tensor - s_final[4]
             R = 0.0 if done else local_model.v(s_final).item() # .item() is to change tensor to python float type.
@@ -126,10 +94,7 @@ def train(global_model, rank): # Called by 3(n_train_processes) agents independe
                 td_target_lst.append([R])
             td_target_lst.reverse()
 
-            td_target_batch = torch.tensor(td_target_lst)
-
-            # s_batch, a_batch, td_target_batch, p_batch = torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst), torch.tensor(td_target_lst), torch.stack(p_lst)
-
+            s_batch, a_batch, td_target_batch, p_batch = torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst), torch.tensor(td_target_lst), torch.stack(p_lst)
             advantage = td_target_batch - local_model.v(s_batch)
 
             loss = torch.sum(-p_batch * advantage.detach().reshape(-1).float()) + F.mse_loss(local_model.v(s_batch), td_target_batch.detach().float()) # This is equivalent to Actor-Critic.
